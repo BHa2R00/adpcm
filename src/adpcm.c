@@ -54,10 +54,10 @@ void adpcm_tx(short* pcm, char* adpcm) {
 	}
 	predict = sign ? (predict - sigma) : (predict + sigma);
 	predict = (predict > PCM_MAX) ? PCM_MAX : (predict < PCM_MIN) ? PCM_MIN : predict;
-	delta = delta | sign;
+	delta = 0xf & (delta | sign);
 	idx = idx + index_table[delta];
 	step = step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)];
-	*adpcm = delta & 0xf;
+	*adpcm = delta;
 }
 
 void adpcm_rx(char* adpcm, short* pcm) {
