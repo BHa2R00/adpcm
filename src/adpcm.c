@@ -1,7 +1,7 @@
 #include <stdio.h>
 
 char index_table[16] = {
-    -1, -1, -1, -1, 2, 4, 6, 8, 
+	-1, -1, -1, -1, 2, 4, 6, 8, 
 	-1, -1, -1, -1, 2, 4, 6, 8
 };
 
@@ -17,118 +17,117 @@ short step_table[89] = {
 	15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
 };
 
-#define PCM_MAX 32767
+#define PCM_MAX 32768
 #define PCM_MIN -32768
-
-short diff, sigma, step;
-short predict;
-char delta, idx, sign;
-
-#define nst_predict			(sign ? (predict - sigma) : (predict + sigma))
-#define clamp_nst_predict	((nst_predict > PCM_MAX) ? PCM_MAX : (nst_predict < PCM_MIN) ? PCM_MIN : nst_predict)
-#define index_sigma			index_table[delta]
-#define nst_step			step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)]
-
-void adpcm_init() {
-	predict = 0;
-	idx = 0;
-	step = 0;
-}
-
-void adpcm_tx(short* pcm, char* adpcm) {
-	diff = *pcm - predict;
-	sign = (diff < 0) ? 8 : 0;
-	delta = 0;
-	sigma = step >> 3;
-	diff = sign ? ~diff + 1 : diff;
-	if(diff >= step) {
-		delta = 4;
-		diff = diff - step;
-		sigma = sigma + step;
-	}
-	step = step >> 1;
-	if(diff >= step) {
-		delta = delta | 2;
-		diff = diff - step;
-		sigma = sigma + step;
-	}
-	step = step >> 1;
-	if(diff >= step) {
-		delta = delta | 1;
-		sigma = sigma + step;
-	}
-	predict = clamp_nst_predict;
-	delta = 0xf & (delta | sign);
-	idx = idx + index_sigma;
-	step = nst_step;
-	*adpcm = delta;
-}
-
-void adpcm_rx(char* adpcm, short* pcm) {
-	delta = *adpcm;
-	idx = idx + index_sigma;
-	sign = delta & 8;
-	delta = delta & 7;
-	sigma = step >> 3;
-	if(delta & 4) sigma = sigma + step;
-	if(delta & 2) sigma = sigma + (step >> 1);
-	if(delta & 1) sigma = sigma + (step >> 2);
-	predict = clamp_nst_predict;
-	step = nst_step;
-	*pcm = predict;
-}
 
 void pcm2adpcm(short* pcm, char* adpcm, int len) {
 	int i;
-	adpcm_init();
-	for(i = 0; i < len; i++) adpcm_tx(pcm+i, adpcm+i);
+	short sigma, step;
+	short diff, predict;
+	char idx;
+	unsigned char delta, sign;
+
+	predict = 0;
+	idx = 0;
+	step = step_table[0];
+
+	for(i = 0; i < len; i++) {
+		diff = pcm[i] - predict;
+		sign = (diff < 0) ? 8 : 0;
+		if(sign) diff = ~diff + 1;
+		delta = 0;
+		sigma = step >> 3;
+		if(diff >= step) {
+			delta = 4;
+			diff = diff - step;
+			sigma = sigma + step;
+		}
+		step = step >> 1;
+		if(diff >= step) {
+			delta = delta | 2;
+			diff = diff - step;
+			sigma = sigma + step;
+		}
+		step = step >> 1;
+		if(diff >= step) {
+			delta = delta | 1;
+			sigma = sigma + step;
+		}
+		if(sign) predict = predict - sigma;
+		else predict = predict + sigma;
+		if(predict > PCM_MAX) predict = PCM_MAX;
+		else if(predict < PCM_MIN) predict = PCM_MIN;
+		delta = delta | sign;
+		idx = idx + index_table[delta];
+		if(idx < 0) idx = 0;
+		else if(idx > 88) idx = 88;
+		step = step_table[idx];
+        adpcm[i] = delta & 0xf;
+	}
 }
 
 void adpcm2pcm(char* adpcm, short* pcm, int len) {
 	int i;
-	adpcm_init();
-	for(i = 0; i < len; i++) adpcm_rx(adpcm+i, pcm+i);
+	short sigma, step;
+	short diff, predict;
+	char idx;
+	unsigned char delta, sign;
+
+	predict = 0;
+	idx = 0;
+	step = step_table[0];
+
+	for(i = 0; i < len; i++) {
+		delta = adpcm[i];
+		idx = idx + index_table[delta];
+		if(idx < 0) idx = 0;
+		else if(idx > 88) idx = 88;
+		sign = delta & 8;
+		delta = delta & 7;
+		sigma = step >> 3;
+		if(delta & 4) sigma = sigma + step;
+		if(delta & 2) sigma = sigma + (step >> 1);
+		if(delta & 1) sigma = sigma + (step >> 2);
+		if(sign) predict = predict - sigma;
+		else predict = predict + sigma;
+		if(predict > PCM_MAX) predict = PCM_MAX;
+		else if(predict < PCM_MIN) predict = PCM_MIN;
+		step = step_table[idx];
+        pcm[i] = predict;
+	}
 }
 
 #include <math.h>
-#define len	10000
-#define test1_dat "../work/test1.dat"
-#define test1_plt "../work/test1.plt"
+#define adpcm2int(d) ((d&8) ? (0 - (d&7)) : (d&7))
 
-void test1() {
-	FILE* fp;
-	short pcm0[len] = {0};
-	char adpcm[len];
-	short pcm1[len];
-	int i;
-	
-	printf("test1 start\n");
-
-	for (i = 0; i < len; i++) {
+int main() {
+	#define len	10000
+    short pcm0[len] = {0};
+    char adpcm[len];
+    short pcm1[len];
+    
+	for (int i = 0; i < len; i++) {
 		pcm0[i] = (short)(
-			(PCM_MAX*0.5) * sin(i*0.001*2*3.1415926) + 
-			(PCM_MAX*0.05) * sin(i*0.01*2*3.1415926) +
-			(PCM_MAX*0.005) * sin(i*0.1*2*3.1415926)
+			(PCM_MAX*0.5) * sin(i*0.001) + 
+			(PCM_MAX*0.05) * sin(i*0.01) +
+			(PCM_MAX*0.005) * sin(i*0.01)
 		);
 	}
 
-	pcm2adpcm(pcm0, adpcm, len);
-	adpcm2pcm(adpcm, pcm1, len);
+    pcm2adpcm(pcm0, adpcm, len);
+    adpcm2pcm(adpcm, pcm1, len);
 
-	fp = fopen(test1_dat, "w");
-	fprintf(fp, "pcm0	adpcm	pcm1\n");
-	for (i = 0; i < len; i++) fprintf(fp, "%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
-	fclose(fp);
-	
-	fp = fopen(test1_plt, "w");
-	fprintf(fp, "plot '%s' using 1:2 with lines, '%s' using 1:3 with lines, '%s' using 1:4 with line", test1_dat, test1_dat, test1_dat);
-	fclose(fp);
-	printf("gnuplot cmd: load '%s'\n", test1_plt);
-	
-	printf("test1 end\n");
+    printf("pcm0	adpcm	pcm1\n");
+    for (int i = 0; i < len; i++) {
+        printf("%d	%d	%d	%d	\n", i, pcm0[i], adpcm2int(adpcm[i]), pcm1[i]);
+    }
+
+    return 0;
 }
 
-int main(){
-	test1();
-	return 0;
-}
+/*
+  cc ../src/adpcm.c -lm
+  ./a.out > 1.data
+  gnuplot
+  plot '1.data' using 1:2 with lines, '1.data' using 1:3 with lines, '1.data' using 1:4 with line
+*/
