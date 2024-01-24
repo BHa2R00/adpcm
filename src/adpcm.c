@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <math.h>
 
 char index_table[16] = {
     -1, -1, -1, -1, 2, 4, 6, 8, 
@@ -18,96 +17,90 @@ short step_table[89] = {
 	15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767
 };
 
-#define PCM_MAX 32768
+#define PCM_MAX 32767
 #define PCM_MIN -32768
+
+short diff, sigma, step;
+short predict;
+char delta, idx, sign;
+
+void adpcm_init() {
+	predict = 0;
+	idx = 0;
+	step = 0;
+}
+
+void adpcm_tx(short* pcm, char* adpcm) {
+	diff = *pcm - predict;
+	sign = (diff < 0) ? 8 : 0;
+	delta = 0;
+	sigma = step >> 3;
+	diff = sign ? ~diff + 1 : diff;
+	if(diff >= step) {
+		delta = 4;
+		diff = diff - step;
+		sigma = sigma + step;
+	}
+	step = step >> 1;
+	if(diff >= step) {
+		delta = delta | 2;
+		diff = diff - step;
+		sigma = sigma + step;
+	}
+	step = step >> 1;
+	if(diff >= step) {
+		delta = delta | 1;
+		sigma = sigma + step;
+	}
+	predict = sign ? (predict - sigma) : (predict + sigma);
+	predict = (predict > PCM_MAX) ? PCM_MAX : (predict < PCM_MIN) ? PCM_MIN : predict;
+	delta = delta | sign;
+	idx = idx + index_table[delta];
+	step = step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)];
+	*adpcm = delta & 0xf;
+}
+
+void adpcm_rx(char* adpcm, short* pcm) {
+	delta = *adpcm;
+	idx = idx + index_table[delta];
+	sign = delta & 8;
+	delta = delta & 7;
+	sigma = step >> 3;
+	if(delta & 4) sigma = sigma + step;
+	if(delta & 2) sigma = sigma + (step >> 1);
+	if(delta & 1) sigma = sigma + (step >> 2);
+	predict = sign ? (predict - sigma) : (predict + sigma);
+	predict = (predict > PCM_MAX) ? PCM_MAX : (predict < PCM_MIN) ? PCM_MIN : predict;
+	step = step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)];
+	*pcm = predict;
+}
 
 void pcm2adpcm(short* pcm, char* adpcm, int len) {
 	int i;
-	char sign;
-	short diff, delta, step;
-	int predict;
-	char index;
-	short sigma;
-
-	predict = 0;
-	index = 0;
-	step = step_table[0];
-
-	for(i = 0; i < len; i++) {
-		diff = pcm[i] - predict;
-		sign = (diff < 0) ? 8 : 0;
-		if(sign) diff = (-diff);
-		delta = 0;
-		sigma = step >> 3;
-		if(diff >= step) {
-			delta = 4;
-			diff = diff - step;
-			sigma = sigma + step;
-		}
-		step = step >> 1;
-		if(diff >= step) {
-			delta = delta | 2;
-			diff = diff - step;
-			sigma = sigma + step;
-		}
-		step = step >> 1;
-		if(diff >= step) {
-			delta = delta | 1;
-			sigma = sigma + step;
-		}
-		if(sign) predict = predict - sigma;
-		else predict = predict + sigma;
-		if(predict > PCM_MAX) predict = PCM_MAX;
-		else if(predict < PCM_MIN) predict = PCM_MIN;
-		delta = delta | sign;
-		index = index + index_table[delta];
-		if(index < 0) index = 0;
-		else if(index > 88) index = 88;
-		step = step_table[index];
-        adpcm[i] = delta & 0xf;
-	}
+	adpcm_init();
+	for(i = 0; i < len; i++) adpcm_tx(pcm+i, adpcm+i);
 }
 
 void adpcm2pcm(char* adpcm, short* pcm, int len) {
 	int i;
-	char sign;
-	short diff, delta, step;
-	int predict;
-	char index;
-	short sigma;
-
-	predict = 0;
-	index = 0;
-	step = step_table[0];
-
-	for(i = 0; i < len; i++) {
-		delta = adpcm[i];
-		index = index + index_table[delta];
-		if(index < 0) index = 0;
-		else if(index > 88) index = 88;
-		sign = delta & 8;
-		delta = delta & 7;
-		sigma = step >> 3;
-		if(delta & 4) sigma = sigma + step;
-		if(delta & 2) sigma = sigma + (step >> 1);
-		if(delta & 1) sigma = sigma + (step >> 2);
-		if(sign) predict = predict - sigma;
-		else predict = predict + sigma;
-		if(predict > PCM_MAX) predict = PCM_MAX;
-		else if(predict < PCM_MIN) predict = PCM_MIN;
-		step = step_table[index];
-        pcm[i] = predict;
-	}
+	adpcm_init();
+	for(i = 0; i < len; i++) adpcm_rx(adpcm+i, pcm+i);
 }
 
+#include <math.h>
+
 int main() {
-	#define len	1600
+	#define len	10000
     short pcm0[len] = {0};
     char adpcm[len];
     short pcm1[len];
     
 	for (int i = 0; i < len; i++) {
-		pcm0[i] = (short)((PCM_MAX/5) * sin(i*0.1));
+		pcm0[i] = (short)(
+			(PCM_MAX*0.5) * sin(i*0.001*2*3.1415926) + 
+			(PCM_MAX*0.05) * sin(i*0.01*2*3.1415926) +
+			(PCM_MAX*0.005) * sin(i*0.1*2*3.1415926)
+		);
 	}
 
     pcm2adpcm(pcm0, adpcm, len);
