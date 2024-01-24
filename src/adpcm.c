@@ -91,11 +91,12 @@ void adpcm2pcm(char* adpcm, short* pcm, int len) {
 
 int main() {
 	#define len	10000
-    short pcm0[len] = {0};
-    char adpcm[len];
-    short pcm1[len];
-    
-	for (int i = 0; i < len; i++) {
+	short pcm0[len] = {0};
+	char adpcm[len];
+	short pcm1[len];
+	int i;
+
+	for (i = 0; i < len; i++) {
 		pcm0[i] = (short)(
 			(PCM_MAX*0.5) * sin(i*0.001*2*3.1415926) + 
 			(PCM_MAX*0.05) * sin(i*0.01*2*3.1415926) +
@@ -103,15 +104,13 @@ int main() {
 		);
 	}
 
-    pcm2adpcm(pcm0, adpcm, len);
-    adpcm2pcm(adpcm, pcm1, len);
+	pcm2adpcm(pcm0, adpcm, len);
+	adpcm2pcm(adpcm, pcm1, len);
 
-    printf("pcm0	adpcm	pcm1\n");
-    for (int i = 0; i < len; i++) {
-        printf("%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
-    }
+	printf("pcm0	adpcm	pcm1\n");
+	for (i = 0; i < len; i++) printf("%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
 
-    return 0;
+	return 0;
 }
 
 /*
