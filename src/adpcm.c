@@ -24,6 +24,11 @@ short diff, sigma, step;
 short predict;
 char delta, idx, sign;
 
+#define nst_predict			(sign ? (predict - sigma) : (predict + sigma))
+#define clamp_nst_predict	((nst_predict > PCM_MAX) ? PCM_MAX : (nst_predict < PCM_MIN) ? PCM_MIN : nst_predict)
+#define index_sigma			index_table[delta]
+#define nst_step			step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)]
+
 void adpcm_init() {
 	predict = 0;
 	idx = 0;
@@ -52,26 +57,24 @@ void adpcm_tx(short* pcm, char* adpcm) {
 		delta = delta | 1;
 		sigma = sigma + step;
 	}
-	predict = sign ? (predict - sigma) : (predict + sigma);
-	predict = (predict > PCM_MAX) ? PCM_MAX : (predict < PCM_MIN) ? PCM_MIN : predict;
+	predict = clamp_nst_predict;
 	delta = 0xf & (delta | sign);
-	idx = idx + index_table[delta];
-	step = step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)];
+	idx = idx + index_sigma;
+	step = nst_step;
 	*adpcm = delta;
 }
 
 void adpcm_rx(char* adpcm, short* pcm) {
 	delta = *adpcm;
-	idx = idx + index_table[delta];
+	idx = idx + index_sigma;
 	sign = delta & 8;
 	delta = delta & 7;
 	sigma = step >> 3;
 	if(delta & 4) sigma = sigma + step;
 	if(delta & 2) sigma = sigma + (step >> 1);
 	if(delta & 1) sigma = sigma + (step >> 2);
-	predict = sign ? (predict - sigma) : (predict + sigma);
-	predict = (predict > PCM_MAX) ? PCM_MAX : (predict < PCM_MIN) ? PCM_MIN : predict;
-	step = step_table[((idx < 0) ? 0 : (idx > 88) ? 88 : idx)];
+	predict = clamp_nst_predict;
+	step = nst_step;
 	*pcm = predict;
 }
 
@@ -88,13 +91,18 @@ void adpcm2pcm(char* adpcm, short* pcm, int len) {
 }
 
 #include <math.h>
+#define len	10000
+#define test1_dat "../work/test1.dat"
+#define test1_plt "../work/test1.plt"
 
-int main() {
-	#define len	10000
+void test1() {
+	FILE* fp;
 	short pcm0[len] = {0};
 	char adpcm[len];
 	short pcm1[len];
 	int i;
+	
+	printf("test1 start\n");
 
 	for (i = 0; i < len; i++) {
 		pcm0[i] = (short)(
@@ -107,15 +115,20 @@ int main() {
 	pcm2adpcm(pcm0, adpcm, len);
 	adpcm2pcm(adpcm, pcm1, len);
 
-	printf("pcm0	adpcm	pcm1\n");
-	for (i = 0; i < len; i++) printf("%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
-
-	return 0;
+	fp = fopen(test1_dat, "w");
+	fprintf(fp, "pcm0	adpcm	pcm1\n");
+	for (i = 0; i < len; i++) fprintf(fp, "%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
+	fclose(fp);
+	
+	fp = fopen(test1_plt, "w");
+	fprintf(fp, "plot '%s' using 1:2 with lines, '%s' using 1:3 with lines, '%s' using 1:4 with line", test1_dat, test1_dat, test1_dat);
+	fclose(fp);
+	printf("gnuplot cmd: load '%s'\n", test1_plt);
+	
+	printf("test1 end\n");
 }
 
-/*
-  cc ../src/adpcm.c -lm
-  ./a.out > 1.data
-  gnuplot
-  plot '1.data' using 1:2 with lines, '1.data' using 1:3 with lines, '1.data' using 1:4 with line
-*/
+int main(){
+	test1();
+	return 0;
+}
