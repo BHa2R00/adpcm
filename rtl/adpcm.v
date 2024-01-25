@@ -97,8 +97,7 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) step <= 0;
 	else if(enable) begin
 		case(nst)
-			st_b2: step <= step >> 1;
-			st_b1: step <= step >> 1;
+			st_b2, st_b1: step <= step >> 1;
 			st_update: step <= nst_step;
 			default: step <= step;
 		endcase
@@ -141,8 +140,7 @@ always@(negedge rstn or posedge clk) begin
 			case(nst)
 				st_idle: diff <= rx_pcm - predict;
 				st_b3: diff <= sign ? ~diff + 1 : diff;
-				st_b2: if(diff >= step) diff <= diff - step;
-				st_b1: if(diff >= step) diff <= diff - step;
+				st_b2, st_b1: if(diff >= step) diff <= diff - step;
 				default: diff <= diff;
 			endcase
 		end
@@ -165,9 +163,7 @@ always@(negedge rstn or posedge clk) begin
 		else begin
 			case(nst)
 				st_load: sigma <= step >> 3;
-				st_b2: if(diff >= step) sigma <= nst_sigma;
-				st_b1: if(diff >= step) sigma <= nst_sigma;
-				st_b0: if(diff >= step) sigma <= nst_sigma;
+				st_b2, st_b1, st_b0: if(diff >= step) sigma <= nst_sigma;
 				default: sigma <= sigma;
 			endcase
 		end
