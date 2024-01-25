@@ -30,6 +30,7 @@ unsigned char delta, sign;
 #define index_sigma			index_table[delta]
 #define clamp_idx			((idx < 0) ? 0 : (idx > 88) ? 88 : idx)
 #define nst_step			step_table[clamp_idx]
+#define nst_sigma			(sigma + step)
 
 void adpcm_init() {
 	predict = 0;
@@ -50,20 +51,20 @@ void adpcm_tx(short* pcm, char* adpcm) {
 	if(diff >= step) {
 		delta = 4;
 		diff = diff - step;
-		sigma = sigma + step;
+		sigma = nst_sigma;
 	}
 	step = step >> 1;
 	// b1 
 	if(diff >= step) {
 		delta = delta | 2;
 		diff = diff - step;
-		sigma = sigma + step;
+		sigma = nst_sigma;
 	}
 	step = step >> 1;
 	// b0 
 	if(diff >= step) {
 		delta = delta | 1;
-		sigma = sigma + step;
+		sigma = nst_sigma;
 	}
 	// update 
 	predict = clamp_nst_predict;
@@ -84,11 +85,13 @@ void adpcm_rx(char* adpcm, short* pcm) {
 	// b3 
 	delta = delta & 7;
 	// b2 
-	if(delta & 4) sigma = sigma + step;
+	if(delta & 4) sigma = nst_sigma;
+	step = step >> 1;
 	// b1 
-	if(delta & 2) sigma = sigma + (step >> 1);
+	if(delta & 2) sigma = nst_sigma;
+	step = step >> 1;
 	// b0 
-	if(delta & 1) sigma = sigma + (step >> 2);
+	if(delta & 1) sigma = nst_sigma;
 	// update 
 	predict = clamp_nst_predict;
 	step = nst_step;
