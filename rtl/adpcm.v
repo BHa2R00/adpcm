@@ -31,6 +31,7 @@ index_table u1(.index_sigma(index_sigma), .delta(delta));
 wire signed [7:0] clamp_idx = ((idx < 0) ? 0 : (idx > 88) ? 88 : idx);
 wire signed [15:0] nst_step;
 step_table u2(.nst_step(nst_step), .idx(clamp_idx));
+wire signed [15:0] nst_sigma = sigma + step;
 
 `ifndef GRAY
 	`define GRAY(X) (X^(X>>1))
@@ -70,71 +71,14 @@ end
 assign ack = cst == st_idle;
 
 always@(negedge rstn or posedge clk) begin
-	if(!rstn) begin
-		sigma <= 0;
-		diff <= 0;
-		step <= 0;
-		predict <= 0;
-	end
+	if(!rstn) sign <= 1'b0;
 	else if(enable) begin
 		case(nst)
-			st_idle: if(!sel_rx_r) diff <= rx_pcm - predict;
-			st_load: sigma <= (step >> 3);
-			st_b3: begin
-				if(!sel_rx_r) diff <= sign ? ~diff + 1 : diff;
-			end
-			st_b2: begin
-				if(sel_rx_r) begin
-					if(delta[2]) sigma <= sigma + step;
-				end
-				else begin
-					if(diff >= step) begin
-						sigma <= sigma + step;
-						diff <= diff - step;
-					end
-					step <= step >> 1;
-				end
-			end
-			st_b1: begin
-				if(sel_rx_r) begin
-					if(delta[1]) sigma <= sigma + (step >> 1);
-				end
-				else begin
-					if(diff >= step) begin
-						sigma <= sigma + step;
-						diff <= diff - step;
-					end
-					step <= step >> 1;
-				end
-			end
-			st_b0: begin
-				if(sel_rx_r) begin
-					if(delta[0]) sigma <= sigma + (step >> 2);
-				end
-				else begin
-					if(diff >= step) begin
-						sigma <= sigma + step;
-					end
-				end
-			end
-			st_update: begin
-				predict <= clamp_nst_predict;
-				step <= nst_step;
-			end
-			default: begin
-				sigma <= sigma;
-				diff <= diff;
-				step <= step;
-				predict <= predict;
-			end
+			st_load: sign <= sel_rx_r ? delta[3] : (diff < 0);
+			default: sign <= sign;
 		endcase
 	end
-	else begin
-		sigma <= 0;
-		diff <= 0;
-		step <= 0;
-		predict <= 0;
-	end
+	else sign <= 1'b0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -150,27 +94,39 @@ always@(negedge rstn or posedge clk) begin
 end
 
 always@(negedge rstn or posedge clk) begin
+	if(!rstn) step <= 0;
+	else if(enable) begin
+		case(nst)
+			st_b2: step <= step >> 1;
+			st_b1: step <= step >> 1;
+			st_update: step <= nst_step;
+			default: step <= step;
+		endcase
+	end
+	else step <= 0;
+end
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) predict <= 0;
+	else if(enable) begin
+		case(nst)
+			st_update: predict <= clamp_nst_predict;
+			default: predict <= predict;
+		endcase
+	end
+	else predict <= 0;
+end
+
+always@(negedge rstn or posedge clk) begin
 	if(!rstn) delta <= 0;
 	else if(enable) begin
 		case(nst)
 			st_idle: if(sel_rx_r) delta <= rx_adpcm;
 			st_load: if(!sel_rx_r) delta <= 0;
 			st_b3: if(sel_rx_r) delta <= delta & 4'b0111;
-			st_b2: begin
-				if(!sel_rx_r) begin
-					if(diff >= step) delta[2] <= 1'b1;
-				end
-			end
-			st_b1: begin
-				if(!sel_rx_r) begin
-					if(diff >= step) delta[1] <= 1'b1;
-				end
-			end
-			st_b0: begin
-				if(!sel_rx_r) begin
-					if(diff >= step) delta[0] <= 1'b1;
-				end
-			end
+			st_b2: if(!sel_rx_r && (diff >= step)) delta[2] <= 1'b1;
+			st_b1: if(!sel_rx_r && (diff >= step)) delta[1] <= 1'b1;
+			st_b0: if(!sel_rx_r && (diff >= step)) delta[0] <= 1'b1;
 			st_update: if(!sel_rx_r) delta[3] <= sign;
 			default: delta <= delta;
 		endcase
@@ -179,14 +135,44 @@ always@(negedge rstn or posedge clk) begin
 end
 
 always@(negedge rstn or posedge clk) begin
-	if(!rstn) sign <= 0;
+	if(!rstn) diff <= 0;
 	else if(enable) begin
-		case(nst)
-			st_load: sign <= sel_rx_r ? delta[3] : (diff < 0);
-			default: sign <= sign;
-		endcase
+		if(!sel_rx_r) begin
+			case(nst)
+				st_idle: diff <= rx_pcm - predict;
+				st_b3: diff <= sign ? ~diff + 1 : diff;
+				st_b2: if(diff >= step) diff <= diff - step;
+				st_b1: if(diff >= step) diff <= diff - step;
+				default: diff <= diff;
+			endcase
+		end
 	end
-	else sign <= 0;
+	else diff <= 0;
+end
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) sigma <= 0;
+	else if(enable) begin
+		if(sel_rx_r) begin
+			case(nst)
+				st_load: sigma <= step >> 3;
+				st_b2: if(delta[2]) sigma <= nst_sigma;
+				st_b1: if(delta[1]) sigma <= nst_sigma;
+				st_b0: if(delta[0]) sigma <= nst_sigma;
+				default: sigma <= sigma;
+			endcase
+		end
+		else begin
+			case(nst)
+				st_load: sigma <= step >> 3;
+				st_b2: if(diff >= step) sigma <= nst_sigma;
+				st_b1: if(diff >= step) sigma <= nst_sigma;
+				st_b0: if(diff >= step) sigma <= nst_sigma;
+				default: sigma <= sigma;
+			endcase
+		end
+	end
+	else sigma <= 0;
 end
 
 `ifdef ADPCM_RX_ONLY
