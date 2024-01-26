@@ -79,7 +79,7 @@ task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm start\n")
 	sel_rx = 1'b0;
 	`rise(enable)
-	for(i = 0; i < `len; i++) cvsr_adpcm_tx;
+	for(i = 0; i < `len; i = i + 1) cvsr_adpcm_tx;
 	`fall(enable)	
 	`write_msg("cvsr_pcm2adpcm end\n")
 endtask
@@ -88,7 +88,7 @@ task cvsr_adpcm2pcm;
 	`write_msg("cvsr_adpcm2pcm start\n")
 	sel_rx = 1'b1;
 	`rise(enable)
-	for(i = 0; i < `len; i++) cvsr_adpcm_rx;
+	for(i = 0; i < `len; i = i + 1) cvsr_adpcm_rx;
 	`fall(enable)
 	`write_msg("cvsr_adpcm2pcm end\n")
 endtask
@@ -96,12 +96,12 @@ endtask
 task cvsr_test1;
 	`write_msg("cvsr_test1 start\n")
 	fp = $fopen(`test1_dat, "r");
-	for(i = 0; i < `len; i++) $fscanf(fp, "%d	%d	%d	%d\n", i, pcm0[i], adpcm[i], pcm1[i]);
+	for(i = 0; i < `len; i = i + 1) $fscanf(fp, "%d	%d	%d	%d\n", i, pcm0[i], adpcm[i], pcm1[i]);
 	$fclose(fp);
 	cvsr_pcm2adpcm;
 	cvsr_adpcm2pcm;
 	fp = $fopen(`cvsr_test1_dat, "w");
-	for(i = 0; i < `len; i++) begin
+	for(i = 0; i < `len; i = i + 1) begin
 		$fwrite(fp, "%d	", i);
 		$fwrite(fp, "%d	", pcm0[i]);
 		$fwrite(fp, "%d	", `adpcm2int(adpcm[i]));
