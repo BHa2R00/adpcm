@@ -14,24 +14,25 @@ module adpcm(
 	input rstn, clk 
 );
 
-localparam PCM_MAX = 32767;
-localparam PCM_MIN = -32768;
+`define PCM_MAX 32767
+`define PCM_MIN -32768
 
 reg signed [15:0] sigma, step;
 reg signed [15:0] diff, predict;
-reg signed [7:0] idx;
+reg [6:0] idx;
 reg [3:0] delta;
 reg sign;
 reg sel_rx_r;
 
 wire signed [15:0] nst_predict = (sign ? (predict - sigma) : (predict + sigma));
-wire signed [15:0] clamp_nst_predict = ((nst_predict > PCM_MAX) ? PCM_MAX : (nst_predict < PCM_MIN) ? PCM_MIN : nst_predict);
-wire signed [7:0] index_sigma;
+wire signed [15:0] clamp_nst_predict = (`PCM_MAX < nst_predict) ? `PCM_MAX : (nst_predict < `PCM_MIN) ? `PCM_MIN : nst_predict;
+wire [6:0] index_sigma;
 index_table u1(.index_sigma(index_sigma), .delta(delta));
-wire signed [7:0] clamp_idx = ((idx < 0) ? 0 : (idx > 88) ? 88 : idx);
-wire signed [15:0] nst_step;
+wire [6:0] clamp_idx = (idx[6] ? 0 : (idx > 88) ? 88 : idx);
+wire [14:0] nst_step;
 step_table u2(.nst_step(nst_step), .idx(clamp_idx));
-wire signed [15:0] nst_sigma = sigma + step;
+wire [15:0] nst_sigma = sigma + step;
+wire lt_diff_step = diff < step;
 
 `ifndef GRAY
 	`define GRAY(X) (X^(X>>1))
@@ -98,7 +99,7 @@ always@(negedge rstn or posedge clk) begin
 	else if(enable) begin
 		case(nst)
 			st_b2, st_b1: step <= step >> 1;
-			st_update: step <= nst_step;
+			st_update: step <= {1'b0, nst_step};
 			default: step <= step;
 		endcase
 	end
@@ -123,9 +124,9 @@ always@(negedge rstn or posedge clk) begin
 			st_idle: if(sel_rx_r) delta <= rx_adpcm;
 			st_load: if(!sel_rx_r) delta <= 0;
 			st_b3: if(sel_rx_r) delta <= delta & 4'b0111;
-			st_b2: if(!sel_rx_r && (diff >= step)) delta[2] <= 1'b1;
-			st_b1: if(!sel_rx_r && (diff >= step)) delta[1] <= 1'b1;
-			st_b0: if(!sel_rx_r && (diff >= step)) delta[0] <= 1'b1;
+			st_b2: if(!sel_rx_r && !lt_diff_step) delta[2] <= 1'b1;
+			st_b1: if(!sel_rx_r && !lt_diff_step) delta[1] <= 1'b1;
+			st_b0: if(!sel_rx_r && !lt_diff_step) delta[0] <= 1'b1;
 			st_update: if(!sel_rx_r) delta[3] <= sign;
 			default: delta <= delta;
 		endcase
@@ -139,8 +140,8 @@ always@(negedge rstn or posedge clk) begin
 		if(!sel_rx_r) begin
 			case(nst)
 				st_idle: diff <= rx_pcm - predict;
-				st_b3: diff <= sign ? ~diff + 1 : diff;
-				st_b2, st_b1: if(diff >= step) diff <= diff - step;
+				st_b3: diff <= sign ? (0 - diff) : diff;
+				st_b2, st_b1: if(!lt_diff_step) diff <= diff - step;
 				default: diff <= diff;
 			endcase
 		end
@@ -163,7 +164,7 @@ always@(negedge rstn or posedge clk) begin
 		else begin
 			case(nst)
 				st_load: sigma <= step >> 3;
-				st_b2, st_b1, st_b0: if(diff >= step) sigma <= nst_sigma;
+				st_b2, st_b1, st_b0: if(!lt_diff_step) sigma <= nst_sigma;
 				default: sigma <= sigma;
 			endcase
 		end
