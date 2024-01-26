@@ -22,7 +22,7 @@ short step_table[89] = {
 
 short sigma, step;
 short diff, predict;
-char idx;
+unsigned char idx;
 unsigned char delta, sign;
 
 #define nst_predict			(sign ? (predict - sigma) : (predict + sigma))
@@ -115,11 +115,11 @@ void adpcm2pcm(char* adpcm, short* pcm, int len) {
 
 void print_verilog_index_table(FILE* fp) {
 	int i;
-	fprintf(fp, "\nmodule index_table(\n	output signed [7:0] index_sigma, \n	input [3:0] delta\n);\n");
+	fprintf(fp, "\nmodule index_table(\n	output [6:0] index_sigma, \n	input [3:0] delta\n);\n");
 	fprintf(fp, "\nassign index_sigma = ");
 	for(i = 0; i < 16; i++) {
 		if(i % 4 == 0) fprintf(fp, "\n	");
-		fprintf(fp, "(delta == %2d) ? %2d : ", i, index_table[i]);
+		fprintf(fp, "(delta == 4'h%1x) ? 7'h%02x : ", i, (index_table[i] & 0x7f));
 	}
 	fprintf(fp, "\n	0;\n");
 	fprintf(fp, "\nendmodule\n");
@@ -127,11 +127,11 @@ void print_verilog_index_table(FILE* fp) {
 
 void print_verilog_step_table(FILE* fp) {
 	int i;
-	fprintf(fp, "\nmodule step_table(\n	output signed [15:0] nst_step, \n	input signed [7:0] idx\n);\n");
+	fprintf(fp, "\nmodule step_table(\n	output [14:0] nst_step, \n	input [6:0] idx\n);\n");
 	fprintf(fp, "\nassign nst_step = ");
 	for(i = 0; i < 89; i++) {
 		if(i % 4 == 0) fprintf(fp, "\n	");
-		fprintf(fp, "(idx == %2d) ? %5d : ", i, step_table[i]);
+		fprintf(fp, "(idx == 7'h%02x) ? 15'h%04x : ", (i & 0x7f), (step_table[i] & 0x7fff));
 	}
 	fprintf(fp, "\n	0;\n");
 	fprintf(fp, "\nendmodule\n");
