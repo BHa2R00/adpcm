@@ -53,7 +53,7 @@ endtask
 
 `define adpcm2int(d) $signed(((d&8) ? (0 - (d&7)) : (d&7)))
 reg signed [15:0] pcm0[`len-1:0];
-reg [3:0] adpcm[`len-1:0];
+reg [3:0] adpcm0[`len-1:0];
 reg signed [15:0] pcm1[`len-1:0];
 reg [3:0] adpcm1[`len-1:0];
 reg signed [15:0] pcm2[`len-1:0];
@@ -75,7 +75,7 @@ task cvsr_adpcm_rx;
 	pcm2[i] = tx_pcm;
 endtask
 
-`define adpcm_tx_trace "../work/adpcm_tx_trace_v.data"
+`define adpcm_tx_trace "../data/adpcm_tx_trace_v.data"
 
 task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm start\n")
@@ -98,7 +98,7 @@ task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm end\n")
 endtask
 
-`define adpcm_rx_trace "../work/adpcm_rx_trace_v.data"
+`define adpcm_rx_trace "../data/adpcm_rx_trace_v.data"
 
 task cvsr_adpcm2pcm;
 	`write_msg("cvsr_adpcm2pcm start\n")
@@ -124,7 +124,7 @@ endtask
 task cvsr_test1;
 	`write_msg("cvsr_test1 start\n")
 	fp = $fopen(`test1_dat, "r");
-	for(i = 0; i < `len; i = i + 1) $fscanf(fp, "%d	%d	%d	%d\n", i, pcm0[i], adpcm[i], pcm1[i]);
+	for(i = 0; i < `len; i = i + 1) $fscanf(fp, "%d	%d	%d	%d\n", i, pcm0[i], adpcm0[i], pcm1[i]);
 	$fclose(fp);
 	cvsr_pcm2adpcm;
 	cvsr_adpcm2pcm;
@@ -132,7 +132,7 @@ task cvsr_test1;
 	for(i = 0; i < `len; i = i + 1) begin
 		$fwrite(fp, "%d	", i);
 		$fwrite(fp, "%d	", pcm0[i]);
-		$fwrite(fp, "%d	", `adpcm2int(adpcm[i]));
+		$fwrite(fp, "%d	", `adpcm2int(adpcm0[i]));
 		$fwrite(fp, "%d	", `adpcm2int(adpcm1[i]));
 		$fwrite(fp, "%d	", pcm1[i]);
 		$fwrite(fp, "%d	", pcm2[i]);
@@ -142,7 +142,7 @@ task cvsr_test1;
 	fp = $fopen(`cvsr_test1_plt, "w");
 	$fwrite(fp, "set terminal x11\nplot \\\n");
 	$fwrite(fp, "'%s' using 1:2 with lines title 'pcm0', \\\n", `cvsr_test1_dat);
-	$fwrite(fp, "'%s' using 1:3 with lines title 'adpcm', \\\n", `cvsr_test1_dat);
+	$fwrite(fp, "'%s' using 1:3 with lines title 'adpcm0', \\\n", `cvsr_test1_dat);
 	$fwrite(fp, "'%s' using 1:4 with lines title 'adpcm1', \\\n", `cvsr_test1_dat);
 	$fwrite(fp, "'%s' using 1:5 with lines title 'pcm1', \\\n", `cvsr_test1_dat);
 	$fwrite(fp, "'%s' using 1:6 with lines title 'pcm2'\n", `cvsr_test1_dat);
