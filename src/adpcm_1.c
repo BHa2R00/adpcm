@@ -27,10 +27,11 @@ unsigned char delta, sign;
 
 #define nst_predict			(sign ? (predict - sigma) : (predict + sigma))
 #define clamp_nst_predict	((nst_predict > PCM_MAX) ? PCM_MAX : (nst_predict < PCM_MIN) ? PCM_MIN : nst_predict)
-#define index_sigma			index_table[delta]
-#define clamp_idx			((idx < 0) ? 0 : (idx > 88) ? 88 : idx)
+#define nst_idx				(idx + index_table[delta])
+#define clamp_idx			((idx & 0x40) ? 0 : (88 < idx) ? 88 : idx)
 #define nst_step			step_table[clamp_idx]
 #define nst_sigma			(sigma + step)
+#define lt_diff_step		(diff < step)
 
 void adpcm_init() {
 	predict = 0;
@@ -46,30 +47,31 @@ void adpcm_tx(short* pcm, char* adpcm) {
 	sigma = step >> 3;
 	sign = (diff < 0) ? 8 : 0;
 	// b3 
-	diff = sign ? ~diff + 1 : diff;
+	diff = sign ? (-diff) : diff;
+	delta = sign;
 	// b2 
-	if(diff >= step) {
-		delta = 4;
+	if(!lt_diff_step) {
+		delta = delta | 4;
 		diff = diff - step;
 		sigma = nst_sigma;
 	}
 	step = step >> 1;
 	// b1 
-	if(diff >= step) {
+	if(!lt_diff_step) {
 		delta = delta | 2;
 		diff = diff - step;
 		sigma = nst_sigma;
 	}
 	step = step >> 1;
 	// b0 
-	if(diff >= step) {
+	if(!lt_diff_step) {
 		delta = delta | 1;
 		sigma = nst_sigma;
 	}
 	// update 
 	predict = clamp_nst_predict;
-	delta = 0xf & (delta | sign);
-	idx = idx + index_sigma;
+	idx = nst_idx;
+	// step
 	step = nst_step;
 	// idle 
 	*adpcm = delta;
@@ -79,7 +81,7 @@ void adpcm_rx(char* adpcm, short* pcm) {
 	// idle 
 	delta = *adpcm;
 	// load 
-	idx = idx + index_sigma;
+	idx = nst_idx;
 	sigma = step >> 3;
 	sign = delta & 8;
 	// b3 
@@ -94,68 +96,98 @@ void adpcm_rx(char* adpcm, short* pcm) {
 	if(delta & 1) sigma = nst_sigma;
 	// update 
 	predict = clamp_nst_predict;
+	// step
 	step = nst_step;
 	// idle 
 	*pcm = predict;
 }
 
+#define adpcm_tx_trace "../work/adpcm_tx_trace_c.data"
+
 void pcm2adpcm(short* pcm, char* adpcm, int len) {
 	int i;
+	FILE* fp = fopen(adpcm_tx_trace, "w");
 	adpcm_init();
-	for(i = 0; i < len; i++) adpcm_tx(pcm+i, adpcm+i);
+	for(i = 0; i < len; i++) {
+		adpcm_tx(pcm+i, adpcm+i);
+		fprintf(fp, "%6d	", sigma);
+		fprintf(fp, "%6d	", step);
+		fprintf(fp, "%6d	", diff);
+		fprintf(fp, "%6d	", predict);
+		fprintf(fp, "%6d	", idx);
+		fprintf(fp, "%6d	", delta);
+		fprintf(fp, "%6d	", clamp_idx);
+		fprintf(fp, "%6d\n", nst_step);
+	}
+	fclose(fp);
 }
+
+#define adpcm_rx_trace "../work/adpcm_rx_trace_c.data"
 
 void adpcm2pcm(char* adpcm, short* pcm, int len) {
 	int i;
+	FILE* fp = fopen(adpcm_rx_trace, "w");
 	adpcm_init();
-	for(i = 0; i < len; i++) adpcm_rx(adpcm+i, pcm+i);
+	for(i = 0; i < len; i++) {
+		adpcm_rx(adpcm+i, pcm+i);
+		fprintf(fp, "%6d	", sigma);
+		fprintf(fp, "%6d	", step);
+		fprintf(fp, "%6d	", diff);
+		fprintf(fp, "%6d	", predict);
+		fprintf(fp, "%6d	", idx);
+		fprintf(fp, "%6d	", delta);
+		fprintf(fp, "%6d	", clamp_idx);
+		fprintf(fp, "%6d\n", nst_step);
+	}
+	fclose(fp);
 }
 
 /******************************************************************************************************************/
 
-void print_verilog_index_table(FILE* fp) {
+#define adpcm_nst_idx "../rtl/adpcm_nst_idx.v"
+
+void print_verilog_nst_idx() {
+	FILE* fp;
 	int i;
-	fprintf(fp, "\nmodule index_table(\n	output [6:0] index_sigma, \n	input [3:0] delta\n);\n");
-	fprintf(fp, "\nassign index_sigma = ");
+	printf("print_verilog_nst_idx to %s\n", adpcm_nst_idx);
+	fp = fopen(adpcm_nst_idx, "w");
+	fprintf(fp, "wire [6:0] nst_idx = ");
 	for(i = 0; i < 16; i++) {
 		if(i % 4 == 0) fprintf(fp, "\n	");
-		fprintf(fp, "(delta == 4'h%1x) ? 7'h%02x : ", i, (index_table[i] & 0x7f));
+		//fprintf(fp, "(delta == 4'h%1x) ? 7'h%02x : ", i, index_table[i]);
+		if(index_table[i] < 0) {
+			fprintf(fp, "(delta == 4'h%1x) ? idx - %d : ", i, ~index_table[i] + 1);
+		} else {
+			fprintf(fp, "(delta == 4'h%1x) ? idx + %d : ", i, index_table[i]);
+		}
 	}
 	fprintf(fp, "\n	0;\n");
-	fprintf(fp, "\nendmodule\n");
+	fclose(fp);
 }
 
-void print_verilog_step_table(FILE* fp) {
+#define adpcm_nst_step "../rtl/adpcm_nst_step.v"
+
+void print_verilog_nst_step() {
+	FILE* fp;
 	int i;
-	fprintf(fp, "\nmodule step_table(\n	output [14:0] nst_step, \n	input [6:0] idx\n);\n");
-	fprintf(fp, "\nassign nst_step = ");
+	printf("print_verilog_nst_step to %s\n", adpcm_nst_step);
+	fp = fopen(adpcm_nst_step, "w");
+	fprintf(fp, "wire signed [15:0] nst_step = ");
 	for(i = 0; i < 89; i++) {
 		if(i % 4 == 0) fprintf(fp, "\n	");
-		fprintf(fp, "(idx == 7'h%02x) ? 15'h%04x : ", (i & 0x7f), (step_table[i] & 0x7fff));
+		fprintf(fp, "(clamp_idx == %2d) ? %5d : ", i, step_table[i]);
 	}
 	fprintf(fp, "\n	0;\n");
-	fprintf(fp, "\nendmodule\n");
-}
-
-#define adpcm_tables "../rtl/adpcm_tables.v"
-
-void print_verilog_adpcm_tables() {
-	FILE* fp;
-	printf("print_verilog_adpcm_tables to %s\n", adpcm_tables);
-	fp = fopen(adpcm_tables, "w");
-	print_verilog_index_table(fp);
-	fprintf(fp, "\n");
-	print_verilog_step_table(fp);
 	fclose(fp);
 }
 
 /******************************************************************************************************************/
 
 #include <math.h>
-#define len	10000
+#define len	50000
 #define test1_dat "../data/test1.dat"
 #define test1_plt "../work/test1.plt"
-#define adpcm2int(d) ((d&8) ? (0 - (d&7)) : (d&7))
+#define adpcm2int(d) ((int)((d&8) ? (0 - (d&7)) : (d&7)))
 
 void test1() {
 	FILE* fp;
@@ -194,7 +226,8 @@ void test1() {
 /******************************************************************************************************************/
 
 int main(){
-	print_verilog_adpcm_tables();
+	print_verilog_nst_idx();
+	print_verilog_nst_step();
 	test1();
 	return 0;
 }
