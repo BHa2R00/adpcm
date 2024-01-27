@@ -1,4 +1,3 @@
-`define ADPCM_ALL
 module adpcm(
 	output ack, 
 	output reg [2:0] cst, nst, 
@@ -169,13 +168,6 @@ always@(negedge rstn or posedge clk) begin
 	else sigma <= 0;
 end
 
-`ifdef ADPCM_RX_ONLY
-always@(*) sel_rx_r = 1'b1;
-`endif
-`ifdef ADPCM_TX_ONLY
-always@(*) sel_rx_r = 1'b0;
-`endif
-`ifdef ADPCM_ALL
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) sel_rx_r <= 0;
 	else if(enable) begin
@@ -186,39 +178,7 @@ always@(negedge rstn or posedge clk) begin
 	end
 	else sel_rx_r <= 0;
 end
-`endif
 
-`ifdef ADPCM_RX_ONLY
-always@(*) tx_adpcm = 0;
-always@(negedge rstn or posedge clk) begin
-	if(!rstn) tx_pcm <= 0;
-	else if(enable) begin
-		case(nst)
-			st_idle: begin
-				if(sel_rx_r) tx_pcm <= predict;
-			end
-			default: tx_pcm <= tx_pcm;
-		endcase
-	end
-	else tx_pcm <= 0;
-end
-`endif
-`ifdef ADPCM_TX_ONLY
-always@(*) tx_pcm = 0;
-always@(negedge rstn or posedge clk) begin
-	if(!rstn) tx_adpcm <= 0;
-	else if(enable) begin
-		case(nst)
-			st_idle: begin
-				if(!sel_rx_r) tx_adpcm <= delta;
-			end
-			default: tx_adpcm <= tx_adpcm;
-		endcase
-	end
-	else tx_adpcm <= 0;
-end
-`endif
-`ifdef ADPCM_ALL
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) begin
 		tx_pcm <= 0;
@@ -241,6 +201,5 @@ always@(negedge rstn or posedge clk) begin
 		tx_adpcm <= 0;
 	end
 end
-`endif
 
 endmodule
