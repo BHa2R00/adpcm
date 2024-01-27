@@ -226,7 +226,7 @@ always@(negedge rstn or posedge clk) begin
 	end
 	else if(enable) begin
 		case(nst)
-			st_idle: begin
+			st_step: begin
 				if(sel_rx_r) tx_pcm <= predict;
 				else tx_adpcm <= delta;
 			end
