@@ -81,9 +81,12 @@ task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm start\n")
 	sel_rx = 1'b0;
 	`rise(enable)
+`ifdef adpcm_tx_trace
 	fp1 = $fopen(`adpcm_tx_trace, "w");
+`endif
 	for(i = 0; i < `len; i = i + 1) begin
 		cvsr_adpcm_tx;
+`ifdef adpcm_tx_trace
 		$fwrite(fp1, "%6d	", dut.sigma);
 		$fwrite(fp1, "%6d	", dut.step);
 		$fwrite(fp1, "%6d	", dut.diff);
@@ -92,6 +95,7 @@ task cvsr_pcm2adpcm;
 		$fwrite(fp1, "%6d	", dut.delta);
 		$fwrite(fp1, "%6d	", dut.clamp_idx);
 		$fwrite(fp1, "%6d\n", dut.nst_step);
+`endif
 	end
 	$fclose(fp1);
 	`fall(enable)	
@@ -104,9 +108,12 @@ task cvsr_adpcm2pcm;
 	`write_msg("cvsr_adpcm2pcm start\n")
 	sel_rx = 1'b1;
 	`rise(enable)
+`ifdef adpcm_rx_trace
 	fp1 = $fopen(`adpcm_rx_trace, "w");
+`endif
 	for(i = 0; i < `len; i = i + 1) begin
 		cvsr_adpcm_rx;
+`ifdef adpcm_rx_trace
 		$fwrite(fp1, "%6d	", dut.sigma);
 		$fwrite(fp1, "%6d	", dut.step);
 		$fwrite(fp1, "%6d	", dut.diff);
@@ -115,10 +122,18 @@ task cvsr_adpcm2pcm;
 		$fwrite(fp1, "%6d	", dut.delta);
 		$fwrite(fp1, "%6d	", dut.clamp_idx);
 		$fwrite(fp1, "%6d\n", dut.nst_step);
+`endif
 	end
 	$fclose(fp1);
 	`fall(enable)
 	`write_msg("cvsr_adpcm2pcm end\n")
+endtask
+
+reg ok_cvsr_test1;
+task check_cvsr_test1;
+	ok_cvsr_test1 = 1'b1;
+	for(i = 0; i < `len; i = i + 1) if(ok_cvsr_test1 && (adpcm0[i] != adpcm1[i])) ok_cvsr_test1 = 1'b0;
+	if(ok_cvsr_test1) `write_msg("cvsr_test1 PASS\n")
 endtask
 
 task cvsr_test1;
@@ -128,6 +143,7 @@ task cvsr_test1;
 	$fclose(fp);
 	cvsr_pcm2adpcm;
 	cvsr_adpcm2pcm;
+	check_cvsr_test1;
 	fp = $fopen(`cvsr_test1_dat, "w");
 	for(i = 0; i < `len; i = i + 1) begin
 		$fwrite(fp, "%d	", i);
