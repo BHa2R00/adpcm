@@ -30,11 +30,11 @@ adpcm dut(
 	. rstn(rstn), .clk(clk) 
 );
 
-`define len	10000
+`define len	50000
 `define test1_dat "../data/test1.dat"
 `define cvsr_test1_dat "../data/cvsr_test1.dat"
 `define cvsr_test1_plt "../work/cvsr_test1.plt"
-integer fp;
+integer fp, fp1;
 
 initial clk = 0;
 always #4.46 clk = ~clk;
@@ -75,20 +75,48 @@ task cvsr_adpcm_rx;
 	pcm2[i] = tx_pcm;
 endtask
 
+`define adpcm_tx_trace "../work/adpcm_tx_trace_v.data"
+
 task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm start\n")
 	sel_rx = 1'b0;
 	`rise(enable)
-	for(i = 0; i < `len; i = i + 1) cvsr_adpcm_tx;
+	fp1 = $fopen(`adpcm_tx_trace, "w");
+	for(i = 0; i < `len; i = i + 1) begin
+		cvsr_adpcm_tx;
+		$fwrite(fp1, "%6d	", dut.sigma);
+		$fwrite(fp1, "%6d	", dut.step);
+		$fwrite(fp1, "%6d	", dut.diff);
+		$fwrite(fp1, "%6d	", dut.predict);
+		$fwrite(fp1, "%6d	", dut.idx);
+		$fwrite(fp1, "%6d	", dut.delta);
+		$fwrite(fp1, "%6d	", dut.clamp_idx);
+		$fwrite(fp1, "%6d\n", dut.nst_step);
+	end
+	$fclose(fp1);
 	`fall(enable)	
 	`write_msg("cvsr_pcm2adpcm end\n")
 endtask
+
+`define adpcm_rx_trace "../work/adpcm_rx_trace_v.data"
 
 task cvsr_adpcm2pcm;
 	`write_msg("cvsr_adpcm2pcm start\n")
 	sel_rx = 1'b1;
 	`rise(enable)
-	for(i = 0; i < `len; i = i + 1) cvsr_adpcm_rx;
+	fp1 = $fopen(`adpcm_rx_trace, "w");
+	for(i = 0; i < `len; i = i + 1) begin
+		cvsr_adpcm_rx;
+		$fwrite(fp1, "%6d	", dut.sigma);
+		$fwrite(fp1, "%6d	", dut.step);
+		$fwrite(fp1, "%6d	", dut.diff);
+		$fwrite(fp1, "%6d	", dut.predict);
+		$fwrite(fp1, "%6d	", dut.idx);
+		$fwrite(fp1, "%6d	", dut.delta);
+		$fwrite(fp1, "%6d	", dut.clamp_idx);
+		$fwrite(fp1, "%6d\n", dut.nst_step);
+	end
+	$fclose(fp1);
 	`fall(enable)
 	`write_msg("cvsr_adpcm2pcm end\n")
 endtask
