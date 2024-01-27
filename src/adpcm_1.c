@@ -73,7 +73,6 @@ void adpcm_tx(short* pcm, char* adpcm) {
 	idx = nst_idx;
 	// step
 	step = nst_step;
-	// idle 
 	*adpcm = delta;
 }
 
@@ -98,11 +97,10 @@ void adpcm_rx(char* adpcm, short* pcm) {
 	predict = clamp_nst_predict;
 	// step
 	step = nst_step;
-	// idle 
 	*pcm = predict;
 }
 
-#define adpcm_tx_trace "../work/adpcm_tx_trace_c.data"
+#define adpcm_tx_trace "../data/adpcm_tx_trace_c.data"
 
 void pcm2adpcm(short* pcm, char* adpcm, int len) {
 	int i;
@@ -122,7 +120,7 @@ void pcm2adpcm(short* pcm, char* adpcm, int len) {
 	fclose(fp);
 }
 
-#define adpcm_rx_trace "../work/adpcm_rx_trace_c.data"
+#define adpcm_rx_trace "../data/adpcm_rx_trace_c.data"
 
 void adpcm2pcm(char* adpcm, short* pcm, int len) {
 	int i;
@@ -154,7 +152,6 @@ void print_verilog_nst_idx() {
 	fprintf(fp, "wire [6:0] nst_idx = ");
 	for(i = 0; i < 16; i++) {
 		if(i % 4 == 0) fprintf(fp, "\n	");
-		//fprintf(fp, "(delta == 4'h%1x) ? 7'h%02x : ", i, index_table[i]);
 		if(index_table[i] < 0) {
 			fprintf(fp, "(delta == 4'h%1x) ? idx - %d : ", i, ~index_table[i] + 1);
 		} else {
@@ -187,7 +184,7 @@ void print_verilog_nst_step() {
 #define len	50000
 #define test1_dat "../data/test1.dat"
 #define test1_plt "../work/test1.plt"
-#define adpcm2int(d) ((int)((d&8) ? (0 - (d&7)) : (d&7)))
+#define adpcm2int(d) ((d & 0x08) ? (0 - (d&0x07)) : d)
 
 void test1() {
 	FILE* fp;
@@ -211,7 +208,7 @@ void test1() {
 
 	fp = fopen(test1_dat, "w");
 	//fprintf(fp, "pcm0	adpcm	pcm1\n");
-	for (i = 0; i < len; i++) fprintf(fp, "%d	%d	%d	%d	\n", i, pcm0[i], adpcm2int(adpcm[i]), pcm1[i]);
+	for (i = 0; i < len; i++) fprintf(fp, "%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
 	fclose(fp);
 	
 	fp = fopen(test1_plt, "w");
