@@ -100,14 +100,19 @@ void adpcm_rx(char* adpcm, short* pcm) {
 	*pcm = predict;
 }
 
+/******************************************************************************************************************/
+
 #define adpcm_tx_trace "../data/adpcm_tx_trace_c.data"
 
 void pcm2adpcm(short* pcm, char* adpcm, int len) {
 	int i;
+#ifdef adpcm_tx_trace
 	FILE* fp = fopen(adpcm_tx_trace, "w");
+#endif
 	adpcm_init();
 	for(i = 0; i < len; i++) {
 		adpcm_tx(pcm+i, adpcm+i);
+#ifdef adpcm_tx_trace
 		fprintf(fp, "%6d	", sigma);
 		fprintf(fp, "%6d	", step);
 		fprintf(fp, "%6d	", diff);
@@ -116,6 +121,7 @@ void pcm2adpcm(short* pcm, char* adpcm, int len) {
 		fprintf(fp, "%6d	", delta);
 		fprintf(fp, "%6d	", clamp_idx);
 		fprintf(fp, "%6d\n", nst_step);
+#endif
 	}
 	fclose(fp);
 }
@@ -124,10 +130,13 @@ void pcm2adpcm(short* pcm, char* adpcm, int len) {
 
 void adpcm2pcm(char* adpcm, short* pcm, int len) {
 	int i;
+#ifdef adpcm_rx_trace
 	FILE* fp = fopen(adpcm_rx_trace, "w");
+#endif
 	adpcm_init();
 	for(i = 0; i < len; i++) {
 		adpcm_rx(adpcm+i, pcm+i);
+#ifdef adpcm_rx_trace
 		fprintf(fp, "%6d	", sigma);
 		fprintf(fp, "%6d	", step);
 		fprintf(fp, "%6d	", diff);
@@ -136,6 +145,7 @@ void adpcm2pcm(char* adpcm, short* pcm, int len) {
 		fprintf(fp, "%6d	", delta);
 		fprintf(fp, "%6d	", clamp_idx);
 		fprintf(fp, "%6d\n", nst_step);
+#endif
 	}
 	fclose(fp);
 }
@@ -184,7 +194,6 @@ void print_verilog_nst_step() {
 #define len	50000
 #define test1_dat "../data/test1.dat"
 #define test1_plt "../work/test1.plt"
-#define adpcm2int(d) ((d & 0x08) ? (0 - (d&0x07)) : d)
 
 void test1() {
 	FILE* fp;
