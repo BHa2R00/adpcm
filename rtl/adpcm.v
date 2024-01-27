@@ -1,5 +1,3 @@
-`include "../rtl/adpcm_tables.v"
-
 `define ADPCM_ALL
 module adpcm(
 	output ack, 
@@ -26,18 +24,17 @@ reg sel_rx_r;
 
 wire signed [15:0] nst_predict = (sign ? (predict - sigma) : (predict + sigma));
 wire signed [15:0] clamp_nst_predict = (`PCM_MAX < nst_predict) ? `PCM_MAX : (nst_predict < `PCM_MIN) ? `PCM_MIN : nst_predict;
-wire [6:0] index_sigma;
-index_table u1(.index_sigma(index_sigma), .delta(delta));
-wire [6:0] clamp_idx = (idx[6] ? 0 : (idx > 88) ? 88 : idx);
-wire [14:0] nst_step;
-step_table u2(.nst_step(nst_step), .idx(clamp_idx));
-wire [15:0] nst_sigma = sigma + step;
+`include "../rtl/adpcm_nst_idx.v"
+wire [6:0] clamp_idx = (idx[6] ? 0 : (88 < idx) ? 88 : idx);
+`include "../rtl/adpcm_nst_step.v"
+wire signed [15:0] nst_sigma = sigma + step;
 wire lt_diff_step = diff < step;
 
 `ifndef GRAY
 	`define GRAY(X) (X^(X>>1))
 `endif
 localparam [2:0]
+	st_step		= `GRAY(7),
 	st_update	= `GRAY(6),
 	st_b0		= `GRAY(5),
 	st_b1		= `GRAY(4),
@@ -65,7 +62,8 @@ always@(*) begin
 		st_b2: nst = st_b1;
 		st_b1: nst = st_b0;
 		st_b0: nst = st_update;
-		st_update: nst = st_idle;
+		st_update: nst = st_step;
+		st_step: nst = st_idle;
 		default: nst = st_idle;
 	endcase
 end
@@ -86,8 +84,8 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) idx <= 0;
 	else if(enable) begin
 		case(nst)
-			st_load: if(sel_rx_r) idx <= idx + index_sigma;
-			st_update: if(!sel_rx_r) idx <= idx + index_sigma;
+			st_load: if(sel_rx_r) idx <= nst_idx;
+			st_update: if(!sel_rx_r) idx <= nst_idx;
 			default: idx <= idx;
 		endcase
 	end
@@ -99,7 +97,7 @@ always@(negedge rstn or posedge clk) begin
 	else if(enable) begin
 		case(nst)
 			st_b2, st_b1: step <= step >> 1;
-			st_update: step <= {1'b0, nst_step};
+			st_step: step <= nst_step;
 			default: step <= step;
 		endcase
 	end
@@ -123,11 +121,10 @@ always@(negedge rstn or posedge clk) begin
 		case(nst)
 			st_idle: if(sel_rx_r) delta <= rx_adpcm;
 			st_load: if(!sel_rx_r) delta <= 0;
-			st_b3: if(sel_rx_r) delta <= delta & 4'b0111;
+			st_b3: if(sel_rx_r) delta <= delta & 4'b0111; else delta <= {sign, 3'b000};
 			st_b2: if(!sel_rx_r && !lt_diff_step) delta[2] <= 1'b1;
 			st_b1: if(!sel_rx_r && !lt_diff_step) delta[1] <= 1'b1;
 			st_b0: if(!sel_rx_r && !lt_diff_step) delta[0] <= 1'b1;
-			st_update: if(!sel_rx_r) delta[3] <= sign;
 			default: delta <= delta;
 		endcase
 	end
@@ -140,7 +137,7 @@ always@(negedge rstn or posedge clk) begin
 		if(!sel_rx_r) begin
 			case(nst)
 				st_idle: diff <= rx_pcm - predict;
-				st_b3: diff <= sign ? (0 - diff) : diff;
+				st_b3: diff <= sign ? (-diff) : diff;
 				st_b2, st_b1: if(!lt_diff_step) diff <= diff - step;
 				default: diff <= diff;
 			endcase
