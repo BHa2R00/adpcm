@@ -30,11 +30,7 @@ adpcm dut(
 	. rstn(rstn), .clk(clk) 
 );
 
-`define len	50000
-`define test1_dat "../data/test1.dat"
-`define cvsr_test1_dat "../data/cvsr_test1.dat"
-`define cvsr_test1_plt "../work/cvsr_test1.plt"
-integer fp, fp1;
+/******************************************************************************************************************/
 
 initial clk = 0;
 always #4.46 clk = ~clk;
@@ -51,13 +47,15 @@ endtask
 `define rise(s) begin s = 0; repeat(5) @(negedge clk); s = 1; end
 `define fall(s) begin s = 1; repeat(5) @(negedge clk); s = 0; end
 
-`define adpcm2int(d) $signed(((d&8) ? (0 - (d&7)) : (d&7)))
+/******************************************************************************************************************/
+
+`define len	50000
 reg signed [15:0] pcm0[`len-1:0];
 reg [3:0] adpcm0[`len-1:0];
 reg signed [15:0] pcm1[`len-1:0];
 reg [3:0] adpcm1[`len-1:0];
 reg signed [15:0] pcm2[`len-1:0];
-reg signed [31:0] i;
+reg signed [31:0] i, j;
 
 task cvsr_adpcm_tx;
 	rx_pcm = pcm0[i];
@@ -75,7 +73,13 @@ task cvsr_adpcm_rx;
 	pcm2[i] = tx_pcm;
 endtask
 
+/******************************************************************************************************************/
+
+integer fp, fp1;
+
+`ifdef ENABLE_TRACE
 `define adpcm_tx_trace "../data/adpcm_tx_trace_v.data"
+`endif
 
 task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm start\n")
@@ -102,7 +106,9 @@ task cvsr_pcm2adpcm;
 	`write_msg("cvsr_pcm2adpcm end\n")
 endtask
 
+`ifdef ENABLE_TRACE
 `define adpcm_rx_trace "../data/adpcm_rx_trace_v.data"
+`endif
 
 task cvsr_adpcm2pcm;
 	`write_msg("cvsr_adpcm2pcm start\n")
@@ -128,6 +134,14 @@ task cvsr_adpcm2pcm;
 	`fall(enable)
 	`write_msg("cvsr_adpcm2pcm end\n")
 endtask
+
+/******************************************************************************************************************/
+
+`define test1_dat "../data/test1.dat"
+`define cvsr_test1_dat "../data/cvsr_test1.dat"
+`define cvsr_test1_plt "../work/cvsr_test1.plt"
+
+`define adpcm2int(d) $signed(((d&8) ? (0 - (d&7)) : (d&7)))
 
 reg ok_cvsr_test1;
 task check_cvsr_test1;
@@ -157,27 +171,73 @@ task cvsr_test1;
 	$fclose(fp);
 	fp = $fopen(`cvsr_test1_plt, "w");
 	$fwrite(fp, "set terminal x11\nplot \\\n");
-	$fwrite(fp, "'%s' using 1:2 with lines title 'pcm0', \\\n", `cvsr_test1_dat);
-	$fwrite(fp, "'%s' using 1:3 with lines title 'adpcm0', \\\n", `cvsr_test1_dat);
-	$fwrite(fp, "'%s' using 1:4 with lines title 'adpcm1', \\\n", `cvsr_test1_dat);
-	$fwrite(fp, "'%s' using 1:5 with lines title 'pcm1', \\\n", `cvsr_test1_dat);
-	$fwrite(fp, "'%s' using 1:6 with lines title 'pcm2'\n", `cvsr_test1_dat);
+	$fwrite(fp, "'%s' using 1:2 with lines title 'pcm', \\\n", `cvsr_test1_dat);
+	$fwrite(fp, "'%s' using 1:3 with lines title 'adpcm c', \\\n", `cvsr_test1_dat);
+	$fwrite(fp, "'%s' using 1:4 with lines title 'adpcm v', \\\n", `cvsr_test1_dat);
+	$fwrite(fp, "'%s' using 1:5 with lines title 'pcm c', \\\n", `cvsr_test1_dat);
+	$fwrite(fp, "'%s' using 1:6 with lines title 'pcm v'\n", `cvsr_test1_dat);
 	$fclose(fp);
 	$write("gnuplot cmd: load '%s'\n", `cvsr_test1_plt);
 	`write_msg("cvsr_test1 end\n")
 endtask
 
+/******************************************************************************************************************/
+
+`define test2_stage1_dat "../data/test2_stage1.dat"
+`define test2_stage2_dat "../data/test2_stage2.dat"
+`define test2_stage3_dat "../data/test2_stage3.dat"
+
+task test2;
+	`write_msg("test2 start\n")
+	fp = $fopen(`test2_stage1_dat, "r");
+	fp1 = $fopen(`test2_stage2_dat, "w");
+	i = 0;
+	sel_rx = 1'b0;
+	`rise(enable)
+	while(!$feof(fp)) begin
+		$fscanf(fp, "%8d	%8d	%8d\n", pcm0[i], adpcm0[i], pcm1[i]);
+		cvsr_adpcm_tx;
+		$fwrite(fp1, "%8d\n", adpcm1[i]);
+	end
+	`fall(enable)
+	$fclose(fp);
+	$fclose(fp1);
+	fp = $fopen(`test2_stage2_dat, "r");
+	fp1 = $fopen(`test2_stage3_dat, "w");
+	sel_rx = 1'b1;
+	`rise(enable)
+	while(!$feof(fp)) begin
+		$fscanf(fp, "%8d\n", adpcm1[i]);
+		cvsr_adpcm_rx;
+		$fwrite(fp1, "%8d\n", pcm2[i]);
+	end
+	`fall(enable)
+	$fclose(fp);
+	$fclose(fp1);
+	`write_msg("test2 end\n")
+endtask
+
+
+/******************************************************************************************************************/
+
 initial begin
 	init;
 	`rise(rstn)
+`ifdef ENABLE_TEST1
 	cvsr_test1;
+`endif
+`ifdef ENABLE_TEST2
+	test2;
+`endif
 	`fall(rstn)
 	$finish;
 end
 
+`ifdef ENABLE_TEST1
 initial begin
 	$fsdbDumpfile("../work/adpcm_tb.fsdb");
 	$fsdbDumpvars(0, adpcm_tb);
 end
+`endif
 
 endmodule
