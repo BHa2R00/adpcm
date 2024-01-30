@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <math.h>
+#include <string.h>
 
 char index_table[16] = {
 	-1, -1, -1, -1, 2, 4, 6, 8, 
@@ -190,7 +192,6 @@ void print_verilog_nst_step() {
 
 /******************************************************************************************************************/
 
-#include <math.h>
 #define len	50000
 #define test1_dat "../data/test1.dat"
 #define test1_plt "../work/test1.plt"
@@ -206,9 +207,9 @@ void test1() {
 
 	for (i = 0; i < len; i++) {
 		pcm0[i] = (short)(
-			(PCM_MAX*0.5) * sin(i*0.001*2*3.1415926) + 
-			(PCM_MAX*0.05) * sin(i*0.01*2*3.1415926) +
-			(PCM_MAX*0.005) * sin(i*0.1*2*3.1415926)
+			(PCM_MAX*0.3) * sin(i*(1/277.0)*2*3.1415926) + 
+			(PCM_MAX*0.3) * sin(i*(1/152.0)*2*3.1415926) +
+			(PCM_MAX*0.3) * sin(i*(1/32.0)*2*3.1415926)
 		);
 	}
 
@@ -216,7 +217,6 @@ void test1() {
 	adpcm2pcm(adpcm, pcm1, len);
 
 	fp = fopen(test1_dat, "w");
-	//fprintf(fp, "pcm0	adpcm	pcm1\n");
 	for (i = 0; i < len; i++) fprintf(fp, "%d	%d	%d	%d	\n", i, pcm0[i], adpcm[i], pcm1[i]);
 	fclose(fp);
 	
@@ -231,9 +231,103 @@ void test1() {
 
 /******************************************************************************************************************/
 
-int main(){
-	print_verilog_nst_idx();
-	print_verilog_nst_step();
-	test1();
+typedef struct {
+	char chunk_id[4];
+	unsigned int chunk_size;
+	char format[4];
+	char subchunk1_id[4];
+	unsigned int subchunk1_size;
+	unsigned short audio_format;
+	unsigned short num_channels;
+	unsigned int sample_rate;
+	unsigned int byte_rate;
+	unsigned short block_align;
+	unsigned short bits_per_sample;
+	char subchunk2_id[4];
+	unsigned int subchunk2_size;
+} wave_head_t;
+
+void read_wave_head(FILE* fp, wave_head_t* h){
+	fread(h, sizeof(wave_head_t), 1, fp);
+}
+
+void write_wave_head(wave_head_t* h, FILE* fp){
+	fwrite(h, sizeof(wave_head_t), 1, fp);
+}
+
+#define test2_pcm0_wav "../data/music_pcm0_s16le.wav"
+#define test2_stage1_dat "../data/test2_stage1.dat"
+#define test2_stage3_dat "../data/test2_stage3.dat"
+#define test2_pcm2_wav "../data/music_pcm2_s16le.wav"
+
+void test2_stage1(){
+	short pcm0;
+	char adpcm;
+	short pcm1;
+	FILE* fp1;
+	FILE* fp2;
+	wave_head_t h1;
+
+	printf("test2_stage1 start\n");
+	
+	fp1 = fopen(test2_stage1_dat, "w");
+	fp2 = fopen(test2_pcm0_wav, "rb");
+	read_wave_head(fp2, &h1);
+	while(!feof(fp2)) {
+		fread(&pcm0, sizeof(short), 1, fp2);
+		adpcm_tx(&pcm0, &adpcm);
+		adpcm_rx(&adpcm, &pcm1);
+		fprintf(fp1, "%8d	%8d	%8d\n", pcm0, adpcm, pcm1);
+	}
+	fclose(fp2);
+	fclose(fp1);
+	
+	printf("test2_stage1 end\n");
+}
+
+void test2_stage4(){
+	int buf;
+	short pcm2;
+	FILE* fp1;
+	FILE* fp2;
+	wave_head_t h1;
+	
+	printf("test2_stage4 start\n");
+
+	fp1 = fopen(test2_pcm0_wav, "rb");
+	read_wave_head(fp1, &h1);
+	fclose(fp1);
+	
+	fp1 = fopen(test2_pcm2_wav, "wb");
+	fp2 = fopen(test2_stage3_dat, "r");
+	write_wave_head(&h1, fp1);
+	while(!feof(fp2)) {
+		fscanf(fp2, "%8d\n", &buf);
+		pcm2 = (short)buf;
+		fwrite(&pcm2, sizeof(short), 1, fp1);
+	}
+	fclose(fp2);
+	fclose(fp1);
+	printf("write %s\n", test2_pcm2_wav);
+	
+	printf("test2_stage4 end\n");
+}
+
+/******************************************************************************************************************/
+
+int main(int argc, char** argv){
+	if(strcmp(argv[1], "print_verilog") == 0) {
+		print_verilog_nst_idx();
+		print_verilog_nst_step();
+	}
+	else if(strcmp(argv[1], "test1") == 0) {
+		test1();
+	}
+	else if(strcmp(argv[1], "test2_stage1") == 0) {
+		test2_stage1();
+	}
+	else if(strcmp(argv[1], "test2_stage4") == 0) {
+		test2_stage4();
+	}
 	return 0;
 }
