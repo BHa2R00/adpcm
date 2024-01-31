@@ -14,6 +14,8 @@ reg [511:0] tb_msg;
 	reg [3:0] rx_adpcm;
 	wire [3:0] tx_adpcm;
 	reg signed [15:0] rx_pcm;
+	reg signed [7:0] rx_idx;
+	wire signed [7:0] tx_idx;
 	reg sel_rx;
 	reg enable;
 	reg rstn, clk;
@@ -25,6 +27,8 @@ adpcm dut(
 	. rx_adpcm(rx_adpcm), 
 	. tx_adpcm(tx_adpcm), 
 	. rx_pcm(rx_pcm), 
+	. rx_idx(rx_idx), 
+	. tx_idx(tx_idx), 
 	. sel_rx(sel_rx), 
 	. enable(enable), 
 	. rstn(rstn), .clk(clk) 
@@ -58,6 +62,7 @@ reg signed [15:0] pcm2[`len-1:0];
 reg signed [31:0] i, j;
 
 task cvsr_adpcm_tx;
+	rx_idx = tx_idx;
 	rx_pcm = pcm0[i];
 	repeat(5) @(negedge clk);
 	req = ~req;
@@ -66,6 +71,7 @@ task cvsr_adpcm_tx;
 endtask
 
 task cvsr_adpcm_rx;
+	rx_idx = tx_idx;
 	rx_adpcm = adpcm1[i];
 	repeat(5) @(negedge clk);
 	req = ~req;
@@ -113,6 +119,7 @@ endtask
 task cvsr_adpcm2pcm;
 	`write_msg("cvsr_adpcm2pcm start\n")
 	sel_rx = 1'b1;
+	rx_idx = 0;
 	`rise(enable)
 `ifdef adpcm_rx_trace
 	fp1 = $fopen(`adpcm_rx_trace, "w");
