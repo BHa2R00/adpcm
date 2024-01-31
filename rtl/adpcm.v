@@ -16,15 +16,15 @@ module adpcm(
 
 reg signed [15:0] sigma, step;
 reg signed [15:0] diff, predict;
-reg [6:0] idx;
+reg signed [7:0] idx;
 reg [3:0] delta;
 reg sign;
-reg sel_rx_r;
+reg sel_tx;
 
 wire signed [15:0] nst_predict = (sign ? (predict - sigma) : (predict + sigma));
 wire signed [15:0] clamp_nst_predict = (`PCM_MAX < nst_predict) ? `PCM_MAX : (nst_predict < `PCM_MIN) ? `PCM_MIN : nst_predict;
 `include "../rtl/adpcm_nst_idx.v"
-wire [6:0] clamp_idx = (idx[6] ? 0 : (88 < idx) ? 88 : idx);
+wire [6:0] clamp_idx = ((idx < 0) ? 0 : (88 < idx) ? 88 : idx[6:0]);
 `include "../rtl/adpcm_nst_step.v"
 wire signed [15:0] nst_sigma = sigma + step;
 wire lt_diff_step = diff < step;
@@ -45,13 +45,11 @@ reg req_d;
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) req_d <= 0;
 	else if(enable) req_d <= req;
-	else req_d <= 0;
 end
 wire req_x = req_d ^ req;
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) cst <= st_idle;
 	else if(enable) cst <= nst;
-	else cst <= st_idle;
 end
 always@(*) begin
 	case(cst)
@@ -72,7 +70,7 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) sign <= 1'b0;
 	else if(enable) begin
 		case(nst)
-			st_load: sign <= sel_rx_r ? delta[3] : (diff < 0);
+			st_load: sign <= sel_tx ? (diff < 0) : delta[3];
 			default: sign <= sign;
 		endcase
 	end
@@ -83,8 +81,8 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) idx <= 0;
 	else if(enable) begin
 		case(nst)
-			st_load: if(sel_rx_r) idx <= nst_idx;
-			st_update: if(!sel_rx_r) idx <= nst_idx;
+			st_load: if(!sel_tx) idx <= nst_idx;
+			st_update: if(sel_tx) idx <= nst_idx;
 			default: idx <= idx;
 		endcase
 	end
@@ -118,12 +116,12 @@ always@(negedge rstn or posedge clk) begin
 	if(!rstn) delta <= 0;
 	else if(enable) begin
 		case(nst)
-			st_idle: if(sel_rx_r) delta <= rx_adpcm;
-			st_load: if(!sel_rx_r) delta <= 0;
-			st_b3: if(sel_rx_r) delta <= delta & 4'b0111; else delta <= {sign, 3'b000};
-			st_b2: if(!sel_rx_r && !lt_diff_step) delta[2] <= 1'b1;
-			st_b1: if(!sel_rx_r && !lt_diff_step) delta[1] <= 1'b1;
-			st_b0: if(!sel_rx_r && !lt_diff_step) delta[0] <= 1'b1;
+			st_idle: if(!sel_tx) delta <= rx_adpcm;
+			st_load: if(sel_tx) delta <= 0;
+			st_b3: if(!sel_tx) delta <= delta & 4'b0111; else delta <= {sign, 3'b000};
+			st_b2: if(sel_tx && !lt_diff_step) delta[2] <= 1'b1;
+			st_b1: if(sel_tx && !lt_diff_step) delta[1] <= 1'b1;
+			st_b0: if(sel_tx && !lt_diff_step) delta[0] <= 1'b1;
 			default: delta <= delta;
 		endcase
 	end
@@ -133,7 +131,7 @@ end
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) diff <= 0;
 	else if(enable) begin
-		if(!sel_rx_r) begin
+		if(sel_tx) begin
 			case(nst)
 				st_idle: diff <= rx_pcm - predict;
 				st_b3: diff <= sign ? (-diff) : diff;
@@ -148,7 +146,14 @@ end
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) sigma <= 0;
 	else if(enable) begin
-		if(sel_rx_r) begin
+		if(sel_tx) begin
+			case(nst)
+				st_load: sigma <= step >> 3;
+				st_b2, st_b1, st_b0: if(!lt_diff_step) sigma <= nst_sigma;
+				default: sigma <= sigma;
+			endcase
+		end
+		else begin
 			case(nst)
 				st_load: sigma <= step >> 3;
 				st_b2: if(delta[2]) sigma <= nst_sigma;
@@ -157,26 +162,19 @@ always@(negedge rstn or posedge clk) begin
 				default: sigma <= sigma;
 			endcase
 		end
-		else begin
-			case(nst)
-				st_load: sigma <= step >> 3;
-				st_b2, st_b1, st_b0: if(!lt_diff_step) sigma <= nst_sigma;
-				default: sigma <= sigma;
-			endcase
-		end
 	end
 	else sigma <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
-	if(!rstn) sel_rx_r <= 0;
+	if(!rstn) sel_tx <= 0;
 	else if(enable) begin
 		case(nst)
-			st_idle: sel_rx_r <= sel_rx;
-			default: sel_rx_r <= sel_rx_r;
+			st_idle: sel_tx <= ~sel_rx;
+			default: sel_tx <= sel_tx;
 		endcase
 	end
-	else sel_rx_r <= 0;
+	else sel_tx <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -187,8 +185,8 @@ always@(negedge rstn or posedge clk) begin
 	else if(enable) begin
 		case(nst)
 			st_step: begin
-				if(sel_rx_r) tx_pcm <= predict;
-				else tx_adpcm <= delta;
+				if(sel_tx) tx_adpcm <= delta;
+				else tx_pcm <= predict;
 			end
 			default: begin
 				tx_pcm <= tx_pcm;
@@ -198,6 +196,111 @@ always@(negedge rstn or posedge clk) begin
 	end
 	else begin
 		tx_pcm <= 0;
+		tx_adpcm <= 0;
+	end
+end
+
+endmodule
+
+
+module adpcm_mono_byte(
+	output full, 
+	output reg [1:0] cst, nst, 
+	input push, pop, 
+	output reg [3:0] tx_adpcm, 
+	input [7:0] rx_byte, 
+	output reg [7:0] tx_byte, 
+	input [3:0] rx_adpcm, 
+	input sel_rx, 
+	input enable, 
+	input rstn, clk 
+);
+
+reg sel_tx;
+reg [7:0] b;
+
+`ifndef GRAY
+	`define GRAY(X) (X^(X>>1))
+`endif
+localparam [1:0]
+	st_3	= `GRAY(3),
+	st_2	= `GRAY(2),
+	st_1	= `GRAY(1),
+	st_idle	= `GRAY(0);
+reg push_d, pop_d;
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) begin
+		push_d <= 0;
+		pop_d <= 0;
+	end
+	else if(enable) begin
+		push_d <= push;
+		pop_d <= pop;
+	end
+end
+wire push_x = push_d ^ push;
+wire pop_x = pop_d ^ pop;
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) cst <= st_idle;
+	else if(enable) cst <= nst;
+end
+always@(*) begin
+	case(cst)
+		st_idle: nst = push_x ? st_1 : cst;
+		st_1: nst = sel_tx ? (push_x ? st_2 : cst) : st_2;
+		st_2: nst = sel_tx ? st_3 : (pop_x ? st_3 : cst);
+		st_3: nst = pop_x ? st_idle : cst;
+		default: nst = st_idle;
+	endcase
+end
+assign full = sel_tx ? (cst == st_3) : ((cst == st_1)|(cst == st_2));
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) sel_tx <= 0;
+	else if(enable) begin
+		case(nst)
+			st_idle: sel_tx <= ~sel_rx;
+			default: sel_tx <= sel_tx;
+		endcase
+	end
+	else sel_tx <= 0;
+end
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) b <= 0;
+	else if(enable) begin
+		case(nst)
+			st_1: begin
+				if(sel_tx) b[3:0] <= rx_adpcm;
+				else b <= rx_byte;
+			end
+			st_2: if(sel_tx) b[7:4] <= rx_adpcm;
+			default: b <= b;
+		endcase
+	end
+	else b <= 0;
+end
+
+always@(negedge rstn or posedge clk) begin
+	if(!rstn) begin
+		tx_byte <= 0;
+		tx_adpcm <= 0;
+	end
+	else if(enable) begin
+		case(nst)
+			st_2: if(!sel_tx) tx_adpcm <= b[3:0];
+			st_3: begin
+				if(sel_tx) tx_byte <= b;
+				else tx_adpcm <= b[7:4];
+			end
+			default: begin
+				tx_byte <= tx_byte;
+				tx_adpcm <= tx_adpcm;
+			end
+		endcase
+	end
+	else begin
+		tx_byte <= 0;
 		tx_adpcm <= 0;
 	end
 end
