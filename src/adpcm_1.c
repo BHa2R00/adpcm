@@ -24,13 +24,13 @@ short step_table[89] = {
 
 short sigma, step;
 short diff, predict;
-unsigned char idx;
+char idx;
 unsigned char delta, sign;
 
 #define nst_predict			(sign ? (predict - sigma) : (predict + sigma))
 #define clamp_nst_predict	((nst_predict > PCM_MAX) ? PCM_MAX : (nst_predict < PCM_MIN) ? PCM_MIN : nst_predict)
 #define nst_idx				(idx + index_table[delta])
-#define clamp_idx			((idx & 0x40) ? 0 : (88 < idx) ? 88 : idx)
+#define clamp_idx			((idx < 0) ? 0 : (88 < idx) ? 88 : idx)
 #define nst_step			step_table[clamp_idx]
 #define nst_sigma			(sigma + step)
 #define lt_diff_step		(diff < step)
@@ -161,7 +161,7 @@ void print_verilog_nst_idx() {
 	int i;
 	printf("print_verilog_nst_idx to %s\n", adpcm_nst_idx);
 	fp = fopen(adpcm_nst_idx, "w");
-	fprintf(fp, "wire [6:0] nst_idx = ");
+	fprintf(fp, "wire signed [7:0] nst_idx = ");
 	for(i = 0; i < 16; i++) {
 		if(i % 4 == 0) fprintf(fp, "\n	");
 		if(index_table[i] < 0) {
