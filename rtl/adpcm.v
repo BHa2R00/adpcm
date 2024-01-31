@@ -21,8 +21,13 @@ reg [3:0] delta;
 reg sign;
 reg sel_tx;
 
-wire signed [15:0] nst_predict = (sign ? (predict - sigma) : (predict + sigma));
-wire signed [15:0] clamp_nst_predict = (`PCM_MAX < nst_predict) ? `PCM_MAX : (nst_predict < `PCM_MIN) ? `PCM_MIN : nst_predict;
+wire signed [16:0] nst_predict = 
+	sign ? ({predict[15],predict} - {sigma[15],sigma}) : 
+	({predict[15],predict} + {sigma[15],sigma});
+wire signed [15:0] clamp_nst_predict = 
+	(`PCM_MAX < nst_predict) ? `PCM_MAX : 
+	(nst_predict < `PCM_MIN) ? `PCM_MIN : 
+	nst_predict[15:0];
 `include "../rtl/adpcm_nst_idx.v"
 wire [6:0] clamp_idx = ((idx < 0) ? 0 : (88 < idx) ? 88 : idx[6:0]);
 `include "../rtl/adpcm_nst_step.v"
