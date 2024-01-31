@@ -6,6 +6,8 @@ module adpcm(
 	input [3:0] rx_adpcm, 
 	output reg [3:0] tx_adpcm, 
 	input signed [15:0] rx_pcm, 
+	output reg signed [7:0] tx_idx, 
+	input signed [7:0] rx_idx, 
 	input sel_rx, 
 	input enable, 
 	input rstn, clk 
@@ -83,15 +85,26 @@ always@(negedge rstn or posedge clk) begin
 end
 
 always@(negedge rstn or posedge clk) begin
-	if(!rstn) idx <= 0;
+	if(!rstn) begin
+		idx <= 0;
+		tx_idx <= 0;
+	end
 	else if(enable) begin
 		case(nst)
+			st_idle: idx <= rx_idx;
 			st_load: if(!sel_tx) idx <= nst_idx;
 			st_update: if(sel_tx) idx <= nst_idx;
-			default: idx <= idx;
+			st_step: tx_idx <= idx;
+			default: begin
+				idx <= idx;
+				tx_idx <= tx_idx;
+			end
 		endcase
 	end
-	else idx <= 0;
+	else begin
+		idx <= 0;
+		tx_idx <= 0;
+	end
 end
 
 always@(negedge rstn or posedge clk) begin
