@@ -71,12 +71,12 @@ task cvsr_adpcm_tx;
 endtask
 
 task cvsr_adpcm_rx;
-	rx_idx = tx_idx;
 	rx_adpcm = adpcm1[i];
 	repeat(5) @(negedge clk);
 	req = ~req;
 	@(posedge ack);
 	pcm2[i] = tx_pcm;
+	rx_idx = tx_idx;
 endtask
 
 /******************************************************************************************************************/
@@ -212,6 +212,7 @@ task test2;
 	fp = $fopen(`test2_stage2_dat, "r");
 	fp1 = $fopen(`test2_stage3_dat, "w");
 	sel_rx = 1'b1;
+	rx_idx = 0;
 	`rise(enable)
 	while(!$feof(fp)) begin
 		$fscanf(fp, "%8d\n", adpcm1[i]);
