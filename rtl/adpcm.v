@@ -1,3 +1,6 @@
+`include "../rtl/mealy.v"
+
+
 module adpcm(
 	output ack, 
 	output reg [2:0] cst, nst, 
@@ -36,28 +39,17 @@ wire [6:0] clamp_idx = ((idx < 0) ? 0 : (88 < idx) ? 88 : idx[6:0]);
 wire signed [15:0] nst_sigma = sigma + step;
 wire lt_diff_step = diff < step;
 
-`ifndef GRAY
-	`define GRAY(X) (X^(X>>1))
-`endif
 localparam [2:0]
-	st_step		= `GRAY(7),
-	st_update	= `GRAY(6),
-	st_b0		= `GRAY(5),
-	st_b1		= `GRAY(4),
-	st_b2		= `GRAY(3),
-	st_b3		= `GRAY(2),
-	st_load		= `GRAY(1),
-	st_idle		= `GRAY(0);
-reg req_d;
-always@(negedge rstn or posedge clk) begin
-	if(!rstn) req_d <= 0;
-	else if(enable) req_d <= req;
-end
-wire req_x = req_d ^ req;
-always@(negedge rstn or posedge clk) begin
-	if(!rstn) cst <= st_idle;
-	else if(enable) cst <= nst;
-end
+	st_step		= `enc_gray(7),
+	st_update	= `enc_gray(6),
+	st_b0		= `enc_gray(5),
+	st_b1		= `enc_gray(4),
+	st_b2		= `enc_gray(3),
+	st_b3		= `enc_gray(2),
+	st_load		= `enc_gray(1),
+	st_idle		= `enc_gray(0);
+`two_phase_in(rstn, clk, req, req_d, req_x) 
+`always_cst(rstn, clk, enable, cst, nst, st_idle) 
 always@(*) begin
 	case(cst)
 		st_idle: nst = req_x ? st_load : cst;
@@ -81,7 +73,6 @@ always@(negedge rstn or posedge clk) begin
 			default: sign <= sign;
 		endcase
 	end
-	else sign <= 1'b0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -101,10 +92,6 @@ always@(negedge rstn or posedge clk) begin
 			end
 		endcase
 	end
-	else begin
-		idx <= 0;
-		tx_idx <= 0;
-	end
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -116,7 +103,6 @@ always@(negedge rstn or posedge clk) begin
 			default: step <= step;
 		endcase
 	end
-	else step <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -127,7 +113,6 @@ always@(negedge rstn or posedge clk) begin
 			default: predict <= predict;
 		endcase
 	end
-	else predict <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -143,7 +128,6 @@ always@(negedge rstn or posedge clk) begin
 			default: delta <= delta;
 		endcase
 	end
-	else delta <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -158,7 +142,6 @@ always@(negedge rstn or posedge clk) begin
 			endcase
 		end
 	end
-	else diff <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -181,7 +164,6 @@ always@(negedge rstn or posedge clk) begin
 			endcase
 		end
 	end
-	else sigma <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -192,7 +174,6 @@ always@(negedge rstn or posedge clk) begin
 			default: sel_tx <= sel_tx;
 		endcase
 	end
-	else sel_tx <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -211,10 +192,6 @@ always@(negedge rstn or posedge clk) begin
 				tx_adpcm <= tx_adpcm;
 			end
 		endcase
-	end
-	else begin
-		tx_pcm <= 0;
-		tx_adpcm <= 0;
 	end
 end
 
@@ -237,14 +214,11 @@ module adpcm_mono_byte(
 reg sel_tx;
 reg [7:0] b;
 
-`ifndef GRAY
-	`define GRAY(X) (X^(X>>1))
-`endif
 localparam [1:0]
-	st_3	= `GRAY(3),
-	st_2	= `GRAY(2),
-	st_1	= `GRAY(1),
-	st_idle	= `GRAY(0);
+	st_3	= `enc_gray(3),
+	st_2	= `enc_gray(2),
+	st_1	= `enc_gray(1),
+	st_idle	= `enc_gray(0);
 reg push_d, pop_d;
 always@(negedge rstn or posedge clk) begin
 	if(!rstn) begin
@@ -281,7 +255,6 @@ always@(negedge rstn or posedge clk) begin
 			default: sel_tx <= sel_tx;
 		endcase
 	end
-	else sel_tx <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -296,7 +269,6 @@ always@(negedge rstn or posedge clk) begin
 			default: b <= b;
 		endcase
 	end
-	else b <= 0;
 end
 
 always@(negedge rstn or posedge clk) begin
@@ -316,10 +288,6 @@ always@(negedge rstn or posedge clk) begin
 				tx_adpcm <= tx_adpcm;
 			end
 		endcase
-	end
-	else begin
-		tx_byte <= 0;
-		tx_adpcm <= 0;
 	end
 end
 
